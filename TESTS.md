@@ -121,3 +121,21 @@ php-whois_php-7.2_1 exited with code 0
 ```
 docker-compose down --volumes --remove-orphans
 ```
+
+
+### Without Docker
+With PHP, php-curl and php-mbstring installed:
+* `composer install`
+* `composer test`
+
+### Live tests
+The default run uses recorded responses only. The tests in `tests/Iodev/Whois/Live` query real RDAP
+and WHOIS servers, so they can fail when a registry changes something or rate-limits you:
+* `composer test-live`
+* or in Docker: `docker compose run php-8.5_intl /run-tests.sh --group live`
+
+### API compatibility test
+`tests/Iodev/Whois/Compat/ApiCompatibilityTest.php` compares the code with
+`api-4.1.10.json`, a snapshot of the public and protected API of io-developer/php-whois 4.1.10.
+It fails when a class, method, constant or property from 4.1.10 is removed or its signature changes.
+Adding things is fine. Do not regenerate the snapshot: it is the contract with existing users.
