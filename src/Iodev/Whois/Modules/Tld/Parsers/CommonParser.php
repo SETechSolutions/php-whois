@@ -10,6 +10,11 @@ use Iodev\Whois\Modules\Tld\TldInfo;
 use Iodev\Whois\Modules\Tld\TldResponse;
 use Iodev\Whois\Modules\Tld\TldParser;
 
+/**
+ * setConfig() copies every config key to a property, including keys of other parser types
+ * (e.g. "parserTypes" when a custom parserClass gets the auto config).
+ */
+#[\AllowDynamicProperties]
 class CommonParser extends TldParser
 {
     /** @var string */

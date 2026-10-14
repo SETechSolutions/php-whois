@@ -67,7 +67,13 @@ class DataObject implements \JsonSerializable
         return $data;
     }
 
-    public function jsonSerialize(): mixed
+    /**
+     * No return type: "mixed" is only a type from PHP 8.0, on PHP 7 it broke json_encode().
+     *
+     * @return array
+     */
+    #[\ReturnTypeWillChange]
+    public function jsonSerialize()
     {
         return $this->toArray();
     }

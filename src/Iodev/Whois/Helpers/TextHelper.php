@@ -12,7 +12,8 @@ class TextHelper
      */
     public static function toUtf8($text)
     {
-        $srcEncoding = mb_detect_encoding($text);
+        // Strict: since PHP 8.0 a loose check reports Latin-1 text as ASCII and the conversion destroys it
+        $srcEncoding = mb_detect_encoding($text, mb_detect_order(), true);
         if (!empty($srcEncoding) && strtolower($srcEncoding) !== 'utf-8') {
             return mb_convert_encoding($text, 'utf-8', strtolower($srcEncoding));
         }
@@ -20,10 +21,10 @@ class TextHelper
             return $text;
         }
         if (mb_check_encoding($text, 'windows-1252')) {
-            return iconv('windows-1252', 'utf-8', $text);
+            return mb_convert_encoding($text, 'utf-8', 'windows-1252');
         }
         if (mb_check_encoding($text, 'windows-1251')) {
-            return iconv('windows-1251', 'utf-8', $text);
+            return mb_convert_encoding($text, 'utf-8', 'windows-1251');
         }
         return $text;
     }
