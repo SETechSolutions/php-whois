@@ -2,7 +2,7 @@
 
 Versions continue the numbering of io-developer/php-whois, which this package replaces.
 
-## 4.2.0 (unreleased)
+## 4.2.0 (2026-10-14)
 
 First release as `setechsolutions/php-whois`. A drop-in replacement for io-developer/php-whois 4.1.10:
 every public and protected class, method and constant of 4.1.10 is still there with the same signature
