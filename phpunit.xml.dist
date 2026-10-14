@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<phpunit bootstrap="tests/bootstrap.php" colors="true">
+<phpunit bootstrap="vendor/autoload.php" colors="true" defaultTestSuite="unit">
     <testsuites>
-        <testsuite name="php-whois">
-            <directory>tests</directory>
+        <testsuite name="unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <!-- Needs orchestra/testbench for the Laravel version under test -->
+        <testsuite name="laravel">
+            <directory>tests/Laravel</directory>
+        </testsuite>
+        <!-- Queries real RDAP and WHOIS servers -->
+        <testsuite name="live">
+            <directory>tests/Live</directory>
         </testsuite>
     </testsuites>
-    <groups>
-        <exclude>
-            <!-- Queries real RDAP and WHOIS servers: composer test-live -->
-            <group>live</group>
-        </exclude>
-    </groups>
 </phpunit>

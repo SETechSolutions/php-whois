@@ -1,17 +1,16 @@
 {
     "name": "setechsolutions/php-whois",
-    "description": "Drop-in replacement for io-developer/php-whois: parsed and raw domain lookups over RDAP with WHOIS fallback, plus ASN routes. PHP 7.2+ compatible",
+    "description": "Domain lookups over RDAP with WHOIS fallback, for plain PHP and Laravel 6 to 13: registrar, dates, name servers, availability",
     "keywords": [
         "php",
+        "laravel",
         "whois",
         "rdap",
-        "query",
-        "tld",
         "domain",
         "lookup",
-        "info",
-        "asn",
-        "routes",
+        "tld",
+        "availability",
+        "expiration",
         "parser"
     ],
     "type": "library",
@@ -19,46 +18,53 @@
     "homepage": "https://github.com/SETechSolutions/php-whois",
     "authors": [
         {
-            "name": "Sergey Sedyshev",
-            "email": "i.o.developer@gmail.com",
-            "homepage": "https://github.com/io-developer",
-            "role": "Original author"
-        },
-        {
             "name": "SETechSolutions",
             "homepage": "https://github.com/SETechSolutions",
             "role": "Maintainer"
+        },
+        {
+            "name": "Sergey Sedyshev",
+            "email": "i.o.developer@gmail.com",
+            "homepage": "https://github.com/io-developer",
+            "role": "Author of the WHOIS parsers, from io-developer/php-whois"
         }
     ],
     "require": {
-        "php": ">=7.2",
+        "php": ">=7.2.5",
         "ext-curl": "*",
         "ext-mbstring": "*",
         "ext-json": "*",
         "symfony/polyfill-intl-idn": "^1.27"
     },
     "require-dev": {
-        "phpunit/phpunit": "^8.5 || ^9.6"
+        "phpunit/phpunit": "^8.5 || ^9.6 || ^10.5 || ^11.5 || ^12.0 || ^13.0"
     },
-    "replace": {
-        "io-developer/php-whois": "self.version"
+    "conflict": {
+        "laravel/framework": "<6.0"
     },
     "autoload": {
         "psr-4": {
-            "Iodev\\": "src/Iodev/"
+            "SETechSolutions\\Whois\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "": [ "tests/" ]
+            "SETechSolutions\\Whois\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "SETechSolutions\\Whois\\Laravel\\WhoisServiceProvider"
+            ],
+            "aliases": {
+                "Whois": "SETechSolutions\\Whois\\Laravel\\Facades\\Whois"
+            }
         }
     },
     "scripts": {
-        "test": [
-            "phpunit"
-        ],
-        "test-live": [
-            "phpunit --group live"
-        ]
+        "test": "phpunit --testsuite unit",
+        "test-laravel": "phpunit --testsuite laravel",
+        "test-live": "phpunit --testsuite live"
     }
 }
