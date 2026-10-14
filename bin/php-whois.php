@@ -26,7 +26,8 @@ function main($argv)
     }
     switch ($action) {
         case 'lookup':
-            lookup($args[0]);
+            $opts = parseOpts(implode(' ', array_slice($args, 1)));
+            lookup($args[0], $opts);
             break;
 
         case 'info':
@@ -59,20 +60,25 @@ function help()
         '  Syntax:',
         '    php-whois {action} [arg1 arg2 ... argN]',
         '    php-whois help|--help|-h',
-        '    php-whois lookup {domain}',
+        '    php-whois lookup {domain} [--mode {mode}]',
         '    php-whois info {domain} [--parser {type}] [--host {whois}]',
+        '    php-whois info {domain} --mode {mode}',
+        '',
+        '  Modes: rdapFirst (default), whoisFirst, rdapOnly, whoisOnly.',
+        '  "info" without --mode queries WHOIS only, to test the WHOIS parsers.',
         '',
         '  Examples',
         '    php-whois lookup google.com',
         '    php-whois info google.com',
         '    php-whois info google.com --parser block',
         '    php-whois info ya.ru --host whois.nic.ru --parser auto',
+        '    php-whois info google.com --mode rdapOnly',
         '',
         '',
     ]);
 }
 
-function lookup(string $domain)
+function lookup(string $domain, array $options = [])
 {
     echo implode("\n", [
         '  action: lookup',
@@ -82,6 +88,9 @@ function lookup(string $domain)
     ]);
 
     $whois = Factory::get()->createWhois();
+    if (!empty($options['mode'])) {
+        $whois->setLookupMode($options['mode']);
+    }
     $result = $whois->lookupDomain($domain);
 
     var_dump($result);
@@ -93,6 +102,7 @@ function info(string $domain, array $options = [])
         'host' => null,
         'parser' => null,
         'file' => null,
+        'mode' => null,
     ], $options);
 
     echo implode("\n", [
@@ -110,6 +120,15 @@ function info(string $domain, array $options = [])
     }
 
     $tld = Factory::get()->createWhois($loader)->getTldModule();
+
+    if (!empty($options['mode'])) {
+        $tld->setLookupMode($options['mode']);
+        $info = $tld->loadDomainInfo($domain);
+        echo "  source: ", $info ? $info->getResponse()->getSource() : 'none (not registered)', "\n\n";
+        var_dump($info ? $info->toArray() : null);
+        return;
+    }
+
     $servers = $tld->matchServers($domain);
 
     if (!empty($options['host'])) {

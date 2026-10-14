@@ -13,6 +13,8 @@ use Iodev\Whois\Modules\Tld\Parsers\AutoParser;
 use Iodev\Whois\Modules\Tld\Parsers\BlockParser;
 use Iodev\Whois\Modules\Tld\Parsers\CommonParser;
 use Iodev\Whois\Modules\Tld\Parsers\IndentParser;
+use Iodev\Whois\Modules\Tld\Parsers\RdapParser;
+use Iodev\Whois\Modules\Tld\Rdap\RdapBootstrap;
 use Iodev\Whois\Modules\Tld\TldModule;
 use Iodev\Whois\Modules\Tld\TldParser;
 use Iodev\Whois\Modules\Tld\TldServer;
@@ -76,7 +78,19 @@ class Factory implements IFactory
     {
         $m = new TldModule($ehois->getLoader());
         $m->setServers($this->createTldSevers());
+        $m->setRdapBootstrap($this->createRdapBootstrap());
+        $m->setRdapParser($this->createTldParser(TldParser::RDAP));
         return $m;
+    }
+
+    /**
+     * @param array|null $ianaData Decoded IANA bootstrap file, the bundled snapshot by default
+     * @return RdapBootstrap
+     */
+    public function createRdapBootstrap($ianaData = null): RdapBootstrap
+    {
+        $ianaData = is_array($ianaData) ? $ianaData : Config::load("module.tld.rdap");
+        return RdapBootstrap::fromIanaData($ianaData);
     }
 
     /**
@@ -145,6 +159,7 @@ class Factory implements IFactory
             TldParser::BLOCK => BlockParser::class,
             TldParser::INDENT => IndentParser::class,
             TldParser::INDENT_AUTOFIX => IndentParser::class,
+            TldParser::RDAP => RdapParser::class,
         ];
         return $this->createTldParserByClass($d[$type], $type);
     }

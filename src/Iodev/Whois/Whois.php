@@ -11,6 +11,7 @@ use Iodev\Whois\Loaders\ILoader;
 use Iodev\Whois\Modules\Asn\AsnInfo;
 use Iodev\Whois\Modules\Asn\AsnModule;
 use Iodev\Whois\Modules\Asn\AsnResponse;
+use Iodev\Whois\Modules\Tld\LookupMode;
 use Iodev\Whois\Modules\Tld\TldInfo;
 use Iodev\Whois\Modules\Tld\TldResponse;
 use Iodev\Whois\Modules\Tld\TldModule;
@@ -81,6 +82,16 @@ class Whois
     {
         $this->asnModule = $this->asnModule ?: $this->getFactory()->createAsnModule($this);
         return $this->asnModule;
+    }
+
+    /**
+     * @param string $mode One of the LookupMode constants
+     * @return $this
+     */
+    public function setLookupMode($mode)
+    {
+        $this->getTldModule()->setLookupMode($mode);
+        return $this;
     }
 
     /**

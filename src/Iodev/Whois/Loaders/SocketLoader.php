@@ -8,8 +8,10 @@ use Iodev\Whois\Exceptions\ConnectionException;
 use Iodev\Whois\Exceptions\WhoisException;
 use Iodev\Whois\Helpers\TextHelper;
 
-class SocketLoader implements ILoader
+class SocketLoader implements ILoader, IHttpLoader
 {
+    use CurlHttpTrait;
+
     public function __construct($timeout = 60)
     {
         $this->setTimeout($timeout);
@@ -77,6 +79,16 @@ class SocketLoader implements ILoader
         fclose($handle);
 
         return $this->validateResponse(TextHelper::toUtf8($text));
+    }
+
+    /**
+     * @param string $url
+     * @return array ['status' => int, 'body' => string]
+     * @throws ConnectionException
+     */
+    public function loadHttp($url)
+    {
+        return $this->loadHttpWithCurl($url, $this->timeout);
     }
 
     /**

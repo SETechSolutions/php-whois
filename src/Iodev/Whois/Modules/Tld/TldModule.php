@@ -7,10 +7,15 @@ namespace Iodev\Whois\Modules\Tld;
 use Iodev\Whois\Exceptions\ConnectionException;
 use Iodev\Whois\Exceptions\ServerMismatchException;
 use Iodev\Whois\Exceptions\WhoisException;
+use Iodev\Whois\Factory;
 use Iodev\Whois\Helpers\DomainHelper;
+use Iodev\Whois\Helpers\LoaderHelper;
+use Iodev\Whois\Loaders\IHttpLoader;
 use Iodev\Whois\Loaders\ILoader;
 use Iodev\Whois\Modules\Module;
 use Iodev\Whois\Modules\ModuleType;
+use Iodev\Whois\Modules\Tld\Rdap\RdapBootstrap;
+use InvalidArgumentException;
 
 class TldModule extends Module
 {
@@ -27,6 +32,122 @@ class TldModule extends Module
 
     /** @var TldServer[] */
     protected $lastUsedServers = [];
+
+    /** @var string */
+    protected $lookupMode = LookupMode::RDAP_FIRST;
+
+    /** @var RdapBootstrap|null */
+    protected $rdapBootstrap;
+
+    /** @var TldParser|null */
+    protected $rdapParser;
+
+    /** @var IHttpLoader|null */
+    protected $httpLoader;
+
+    /** @var bool */
+    protected $rdapFollowRelated = true;
+
+    /**
+     * @return string One of the LookupMode constants
+     */
+    public function getLookupMode()
+    {
+        return $this->lookupMode;
+    }
+
+    /**
+     * @param string $mode One of the LookupMode constants
+     * @return $this
+     */
+    public function setLookupMode($mode)
+    {
+        if (!in_array($mode, LookupMode::all(), true)) {
+            throw new InvalidArgumentException("Unknown lookup mode '$mode'");
+        }
+        $this->lookupMode = $mode;
+        return $this;
+    }
+
+    /**
+     * @return RdapBootstrap
+     */
+    public function getRdapBootstrap()
+    {
+        $this->rdapBootstrap = $this->rdapBootstrap ?: Factory::get()->createRdapBootstrap();
+        return $this->rdapBootstrap;
+    }
+
+    /**
+     * @param RdapBootstrap $bootstrap
+     * @return $this
+     */
+    public function setRdapBootstrap(RdapBootstrap $bootstrap)
+    {
+        $this->rdapBootstrap = $bootstrap;
+        return $this;
+    }
+
+    /**
+     * @return TldParser
+     */
+    public function getRdapParser()
+    {
+        $this->rdapParser = $this->rdapParser ?: Factory::get()->createTldParser(TldParser::RDAP);
+        return $this->rdapParser;
+    }
+
+    /**
+     * @param TldParser $parser
+     * @return $this
+     */
+    public function setRdapParser(TldParser $parser)
+    {
+        $this->rdapParser = $parser;
+        return $this;
+    }
+
+    /**
+     * The loader for RDAP requests: the one set with setHttpLoader(), or the module's loader when it
+     * supports HTTP (see LoaderHelper::getHttpLoader()). Null means RDAP is not used.
+     *
+     * @return IHttpLoader|null
+     */
+    public function getHttpLoader()
+    {
+        return $this->httpLoader ?: LoaderHelper::getHttpLoader($this->getLoader());
+    }
+
+    /**
+     * @param IHttpLoader|null $loader
+     * @return $this
+     */
+    public function setHttpLoader(?IHttpLoader $loader)
+    {
+        $this->httpLoader = $loader;
+        return $this;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isRdapFollowRelated()
+    {
+        return $this->rdapFollowRelated;
+    }
+
+    /**
+     * Whether to also ask the registrar's RDAP server, which registries such as .com link to.
+     * It adds a second request but usually fills in the owner and the registrar's WHOIS server.
+     *
+     * @param bool $follow
+     * @return $this
+     */
+    public function setRdapFollowRelated($follow)
+    {
+        $this->rdapFollowRelated = (bool)$follow;
+        return $this;
+    }
 
     /**
      * @return TldServer[]
@@ -118,8 +239,11 @@ class TldModule extends Module
      */
     public function lookupDomain($domain, ?TldServer $server = null)
     {
-        $servers = $server ? [$server] : $this->matchServers($domain);
-        list ($response) = $this->loadDomainData($domain, $servers);
+        if ($server) {
+            list ($response) = $this->loadDomainData($domain, [$server]);
+            return $response;
+        }
+        list ($response) = $this->loadDomainDataByMode($domain, true);
         return $response;
     }
 
@@ -133,9 +257,214 @@ class TldModule extends Module
      */
     public function loadDomainInfo($domain, ?TldServer $server = null)
     {
-        $servers = $server ? [$server] : $this->matchServers($domain);
-        list (, $info) = $this->loadDomainData($domain, $servers);
+        if ($server) {
+            list (, $info) = $this->loadDomainData($domain, [$server]);
+            return $info;
+        }
+        list (, $info) = $this->loadDomainDataByMode($domain, false);
         return $info;
+    }
+
+    /**
+     * @param string $domain
+     * @return string[]
+     */
+    public function matchRdapUrls($domain)
+    {
+        return $this->getRdapBootstrap()->matchUrls($domain);
+    }
+
+    /**
+     * @param bool $forRawText lookupDomain() wants WHOIS text when it can get it
+     * @return string[]
+     */
+    protected function getProtocolOrder($forRawText)
+    {
+        switch ($this->lookupMode) {
+            case LookupMode::WHOIS_ONLY:
+                return [TldResponse::SOURCE_WHOIS];
+            case LookupMode::RDAP_ONLY:
+                return [TldResponse::SOURCE_RDAP];
+            case LookupMode::WHOIS_FIRST:
+                return [TldResponse::SOURCE_WHOIS, TldResponse::SOURCE_RDAP];
+            default:
+                return $forRawText
+                    ? [TldResponse::SOURCE_WHOIS, TldResponse::SOURCE_RDAP]
+                    : [TldResponse::SOURCE_RDAP, TldResponse::SOURCE_WHOIS];
+        }
+    }
+
+    /**
+     * Tries the protocols in the lookup mode's order and returns the first answer.
+     * A failure (ConnectionException or WhoisException) moves on to the next protocol;
+     * "not found" is an answer and does not. When every protocol fails, the first one's error is thrown.
+     *
+     * @param string $domain
+     * @param bool $forRawText
+     * @return array [TldResponse, TldInfo|null]
+     * @throws ServerMismatchException
+     * @throws ConnectionException
+     * @throws WhoisException
+     */
+    protected function loadDomainDataByMode($domain, $forRawText)
+    {
+        $this->lastUsedServers = [];
+        $firstError = null;
+        foreach ($this->getProtocolOrder($forRawText) as $protocol) {
+            try {
+                if ($protocol === TldResponse::SOURCE_RDAP) {
+                    $urls = $this->getHttpLoader() ? $this->matchRdapUrls($domain) : [];
+                    if ($urls) {
+                        return $this->loadRdapData($domain, $urls);
+                    }
+                } else {
+                    $servers = $this->matchServers($domain, true);
+                    if ($servers) {
+                        return $this->loadDomainData($domain, $servers);
+                    }
+                }
+            } catch (ConnectionException $e) {
+                $firstError = $firstError ?: $e;
+            } catch (WhoisException $e) {
+                $firstError = $firstError ?: $e;
+            }
+        }
+        if ($firstError) {
+            throw $firstError;
+        }
+        throw new ServerMismatchException("No servers matched for domain '$domain'");
+    }
+
+    /**
+     * @param string $url
+     * @param string $domain
+     * @return TldResponse An RDAP response; HTTP status 404 means the domain was not found
+     * @throws ConnectionException
+     * @throws WhoisException
+     */
+    public function loadRdapResponse($url, $domain)
+    {
+        $httpLoader = $this->getHttpLoader();
+        if (!$httpLoader) {
+            throw new ConnectionException('The loader does not support HTTP, RDAP is not available');
+        }
+        $result = $httpLoader->loadHttp($url);
+        $status = (int)$result['status'];
+        $host = (string)parse_url($url, PHP_URL_HOST);
+        if ($status === 429) {
+            throw new WhoisException("RDAP rate limit exceeded: $host", $status);
+        }
+        if ($status >= 500 || $status === 0) {
+            throw new ConnectionException("RDAP server error (HTTP $status): $host", $status);
+        }
+        if ($status !== 200 && $status !== 404) {
+            throw new WhoisException("RDAP request failed (HTTP $status): $url", $status);
+        }
+        return new TldResponse([
+            'domain' => $domain,
+            'host' => $host,
+            'query' => $url,
+            'text' => $result['body'],
+            'source' => TldResponse::SOURCE_RDAP,
+            'httpStatus' => $status,
+        ]);
+    }
+
+    /**
+     * @param string $domain
+     * @param string[] $baseUrls Tried in order until one answers
+     * @return array [TldResponse, TldInfo|null] The info is null when the domain is not registered
+     * @throws ConnectionException
+     * @throws WhoisException
+     */
+    public function loadRdapData($domain, array $baseUrls)
+    {
+        $domain = DomainHelper::toAscii($domain);
+        $lastError = null;
+        foreach ($baseUrls as $baseUrl) {
+            $url = rtrim($baseUrl, '/') . '/domain/' . rawurlencode($domain);
+            try {
+                $response = $this->loadRdapResponse($url, $domain);
+            } catch (ConnectionException $e) {
+                $lastError = $e;
+                continue;
+            }
+            if ($response->getHttpStatus() === 404) {
+                return [$response, null];
+            }
+            $info = $this->getRdapParser()->parseResponse($response);
+            if (!$info) {
+                throw new WhoisException("Unexpected RDAP response from {$response->host}");
+            }
+            if ($this->rdapFollowRelated) {
+                $info = $this->loadRdapRelatedInfo($info);
+            }
+            return [$response, $info];
+        }
+        throw $lastError ?: new WhoisException('No RDAP response');
+    }
+
+    /**
+     * Adds the registrar's data when the registry links to the registrar's RDAP server.
+     * The registry's values win, except the owner and the WHOIS server, which only the registrar has
+     * for thin registries. Errors are ignored: the registry's answer is enough.
+     *
+     * @param TldInfo $info
+     * @return TldInfo
+     */
+    protected function loadRdapRelatedInfo(TldInfo $info)
+    {
+        $url = $this->findRdapRelatedUrl($info);
+        if (!$url) {
+            return $info;
+        }
+        try {
+            $response = $this->loadRdapResponse($url, $info->getResponse()->domain);
+        } catch (ConnectionException $e) {
+            return $info;
+        } catch (WhoisException $e) {
+            return $info;
+        }
+        $related = $response->getHttpStatus() === 200
+            ? $this->getRdapParser()->parseResponse($response)
+            : null;
+        if (!$related) {
+            return $info;
+        }
+        $data = $info->getData();
+        foreach ($related->getData() as $key => $value) {
+            if (empty($data[$key]) || (in_array($key, ['owner', 'whoisServer'], true) && !empty($value))) {
+                $data[$key] = $value;
+            }
+        }
+        return new TldInfo($info->getResponse(), $data, array_merge($info->getExtra(), [
+            'relatedResponse' => $response,
+            'relatedInfo' => $related,
+        ]));
+    }
+
+    /**
+     * @param TldInfo $info
+     * @return string|null
+     */
+    protected function findRdapRelatedUrl(TldInfo $info)
+    {
+        $json = $info->getExtraVal('rdap', []);
+        $host = $info->getResponse()->host;
+        foreach ($json['links'] ?? [] as $link) {
+            $href = (string)($link['href'] ?? '');
+            $type = strtolower((string)($link['type'] ?? ''));
+            if (($link['rel'] ?? '') !== 'related' || !preg_match('~^https?://~i', $href)) {
+                continue;
+            }
+            if ($type !== '' && strpos($type, 'json') === false) {
+                continue;
+            }
+            if (strcasecmp((string)parse_url($href, PHP_URL_HOST), $host) !== 0) {
+                return $href;
+            }
+        }
+        return null;
     }
 
     /**

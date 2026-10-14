@@ -1,0 +1,241 @@
+{
+  "rdapConformance": [
+    "rdap_level_0",
+    "icann_rdap_response_profile_1",
+    "icann_rdap_technical_implementation_guide_1"
+  ],
+  "objectClassName": "domain",
+  "entities": [
+    {
+      "objectClassName": "entity",
+      "entities": [
+        {
+          "objectClassName": "entity",
+          "roles": [
+            "abuse"
+          ],
+          "status": [
+            "active"
+          ],
+          "vcardArray": [
+            "vcard",
+            [
+              [
+                "version",
+                {},
+                "text",
+                "4.0"
+              ],
+              [
+                "fn",
+                {},
+                "text",
+                "Prudence Malinki"
+              ],
+              [
+                "tel",
+                {
+                  "type": [
+                    "voice"
+                  ]
+                },
+                "uri",
+                "tel:+1.2083895740"
+              ],
+              [
+                "email",
+                {},
+                "text",
+                "registryescalations@markmonitor.com"
+              ]
+            ]
+          ]
+        }
+      ],
+      "handle": "292",
+      "links": [
+        {
+          "href": "https://pubapi.registry.google/rdap/entity/292",
+          "rel": "self",
+          "type": "application/rdap+json",
+          "value": "https://pubapi.registry.google/rdap/domain/google.app"
+        },
+        {
+          "href": "http://www.markmonitor.com",
+          "rel": "about",
+          "type": "text/html",
+          "value": "https://rdap.markmonitor.com/rdap/"
+        }
+      ],
+      "publicIds": [
+        {
+          "identifier": "292",
+          "type": "IANA Registrar ID"
+        }
+      ],
+      "remarks": [
+        {
+          "description": [
+            "Summary data only. For complete data, send a specific query for the object."
+          ],
+          "title": "Incomplete Data",
+          "type": "object truncated due to unexplainable reasons"
+        }
+      ],
+      "roles": [
+        "registrar"
+      ],
+      "vcardArray": [
+        "vcard",
+        [
+          [
+            "version",
+            {},
+            "text",
+            "4.0"
+          ],
+          [
+            "fn",
+            {},
+            "text",
+            "MarkMonitor Inc."
+          ]
+        ]
+      ]
+    }
+  ],
+  "events": [
+    {
+      "eventAction": "registration",
+      "eventActor": "markmonitor",
+      "eventDate": "2018-03-29T16:02:13.209Z"
+    },
+    {
+      "eventAction": "expiration",
+      "eventDate": "2027-03-29T16:02:13.209Z"
+    },
+    {
+      "eventAction": "last update of RDAP database",
+      "eventDate": "2026-10-14T00:25:25.607Z"
+    },
+    {
+      "eventAction": "last changed",
+      "eventDate": "2026-03-02T10:37:52.278Z"
+    }
+  ],
+  "handle": "2C5A4BAFF-APP",
+  "ldhName": "google.app",
+  "links": [
+    {
+      "href": "https://pubapi.registry.google/rdap/domain/google.app",
+      "rel": "self",
+      "type": "application/rdap+json",
+      "value": "https://pubapi.registry.google/rdap/domain/google.app"
+    },
+    {
+      "href": "https://rdap.markmonitor.com/rdap/domain/google.app",
+      "rel": "related",
+      "type": "application/rdap+json",
+      "value": "https://pubapi.registry.google/rdap/domain/google.app"
+    }
+  ],
+  "nameservers": [
+    {
+      "objectClassName": "nameserver",
+      "handle": "5217A1_SOY-GOOGLE",
+      "ldhName": "ns1.googledomains.com",
+      "links": [
+        {
+          "href": "https://pubapi.registry.google/rdap/nameserver/ns1.googledomains.com",
+          "rel": "self",
+          "type": "application/rdap+json",
+          "value": "https://pubapi.registry.google/rdap/domain/google.app"
+        }
+      ],
+      "remarks": [
+        {
+          "description": [
+            "Summary data only. For complete data, send a specific query for the object."
+          ],
+          "title": "Incomplete Data",
+          "type": "object truncated due to unexplainable reasons"
+        }
+      ]
+    },
+    {
+      "objectClassName": "nameserver",
+      "handle": "378AC2_SOY-GOOGLE",
+      "ldhName": "ns2.googledomains.com",
+      "links": [
+        {
+          "href": "https://pubapi.registry.google/rdap/nameserver/ns2.googledomains.com",
+          "rel": "self",
+          "type": "application/rdap+json",
+          "value": "https://pubapi.registry.google/rdap/domain/google.app"
+        }
+      ],
+      "remarks": [
+        {
+          "description": [
+            "Summary data only. For complete data, send a specific query for the object."
+          ],
+          "title": "Incomplete Data",
+          "type": "object truncated due to unexplainable reasons"
+        }
+      ]
+    },
+    {
+      "objectClassName": "nameserver",
+      "handle": "5217A2_SOY-GOOGLE",
+      "ldhName": "ns3.googledomains.com",
+      "links": [
+        {
+          "href": "https://pubapi.registry.google/rdap/nameserver/ns3.googledomains.com",
+          "rel": "self",
+          "type": "application/rdap+json",
+          "value": "https://pubapi.registry.google/rdap/domain/google.app"
+        }
+      ],
+      "remarks": [
+        {
+          "description": [
+            "Summary data only. For complete data, send a specific query for the object."
+          ],
+          "title": "Incomplete Data",
+          "type": "object truncated due to unexplainable reasons"
+        }
+      ]
+    },
+    {
+      "objectClassName": "nameserver",
+      "handle": "162012_SOY-GOOGLE",
+      "ldhName": "ns4.googledomains.com",
+      "links": [
+        {
+          "href": "https://pubapi.registry.google/rdap/nameserver/ns4.googledomains.com",
+          "rel": "self",
+          "type": "application/rdap+json",
+          "value": "https://pubapi.registry.google/rdap/domain/google.app"
+        }
+      ],
+      "remarks": [
+        {
+          "description": [
+            "Summary data only. For complete data, send a specific query for the object."
+          ],
+          "title": "Incomplete Data",
+          "type": "object truncated due to unexplainable reasons"
+        }
+      ]
+    }
+  ],
+  "secureDNS": {
+    "delegationSigned": false,
+    "zoneSigned": true
+  },
+  "status": [
+    "client delete prohibited",
+    "client transfer prohibited",
+    "client update prohibited"
+  ]
+}

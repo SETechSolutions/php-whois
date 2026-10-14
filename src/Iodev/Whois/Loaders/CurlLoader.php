@@ -8,8 +8,10 @@ use Iodev\Whois\Exceptions\ConnectionException;
 use Iodev\Whois\Exceptions\WhoisException;
 use Iodev\Whois\Helpers\TextHelper;
 
-class CurlLoader implements ILoader
+class CurlLoader implements ILoader, IHttpLoader
 {
+    use CurlHttpTrait;
+
     public function __construct($timeout = 60)
     {
         $this->setTimeout($timeout);
@@ -111,6 +113,18 @@ class CurlLoader implements ILoader
             throw new ConnectionException($errstr, $errno);
         }
         return $this->validateResponse(TextHelper::toUtf8($result));
+    }
+
+    /**
+     * Uses the same curl options as WHOIS queries, so a proxy set with replaceOptions() applies to RDAP too.
+     *
+     * @param string $url
+     * @return array ['status' => int, 'body' => string]
+     * @throws ConnectionException
+     */
+    public function loadHttp($url)
+    {
+        return $this->loadHttpWithCurl($url, $this->timeout, $this->options);
     }
 
     /**
