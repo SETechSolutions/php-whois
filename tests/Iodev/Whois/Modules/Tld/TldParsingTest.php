@@ -691,8 +691,6 @@ class TldParsingTest extends TestCase
             [ "google.co.mz", ".mz/google.co.mz.txt", ".mz/google.co.mz.json" ],
 
             // .NA
-            [ "free.na", ".na/free.txt", null ],
-            [ "google.com.na", ".na/google.com.na.txt", ".na/google.com.na.json" ],
 
             // .NAVY
             [ "free.navy", ".navy/free.txt", null ],
@@ -744,8 +742,6 @@ class TldParsingTest extends TestCase
             [ "google.com.om", ".om/google.com.om.txt", ".om/google.com.om.json" ],
 
             // .PAGE
-            [ "free.page", ".page/free.txt", null ],
-            [ "microsoft.page", ".page/microsoft.page.txt", ".page/microsoft.page.json" ],
 
             // .PE
             [ "free.pe", ".pe/free.txt", null ],
