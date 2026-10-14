@@ -1,0 +1,57 @@
+#!/bin/sh
+# End-to-end check in a real Laravel app, inside Docker:
+# creates a fresh Laravel project, installs this checkout of the package into it, and runs
+# tests/LaravelApp/WhoisAppTest.stub there. The app does not register the package itself, so this
+# is what proves Laravel's package discovery works. The tests query real RDAP and WHOIS servers.
+#
+#   bin/test-laravel-app <php version> <laravel version>     e.g. bin/test-laravel-app 8.4 12
+#   bin/test-laravel-app all                                 Laravel 6 to 13, each on a PHP it supports
+
+set -e
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+
+if [ "$1" = "all" ]; then
+    failed=""
+    for pair in "7.2 6" "7.4 7" "7.4 8" "8.1 9" "8.2 10" "8.3 11" "8.4 12" "8.5 13"; do
+        set -- $pair
+        "$0" "$1" "$2" || failed="$failed $2"
+    done
+    if [ -n "$failed" ]; then echo "FAILED on Laravel:$failed"; exit 1; fi
+    echo "All Laravel versions passed"
+    exit 0
+fi
+
+PHP_VERSION=${1:?usage: bin/test-laravel-app <php version> <laravel version> | all}
+LARAVEL=${2:?usage: bin/test-laravel-app <php version> <laravel version> | all}
+echo "===== Laravel $LARAVEL on PHP $PHP_VERSION"
+
+docker run --rm -v "$ROOT":/src:ro -v php-whois-composer-cache:/root/.composer/cache \
+    -e LARAVEL="$LARAVEL" "php:$PHP_VERSION-cli-alpine" sh -c '
+set -e
+apk add --no-cache git unzip >/dev/null 2>&1
+curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer >/dev/null 2>&1
+export COMPOSER_ALLOW_SUPERUSER=1 COMPOSER_MEMORY_LIMIT=-1
+# Composer refuses Laravel versions with open security advisories, which is every release up to 11.
+# This app exists only for the duration of the test.
+if [ "$LARAVEL" -le 11 ]; then composer config -g policy.advisories.block false; fi
+
+# The package as Composer would install it: a copy of the checkout without vendor/ and .git
+mkdir /pkg && cd /src && tar --exclude=./vendor --exclude=./composer.lock --exclude=./.git -cf - . | tar -xf - -C /pkg
+
+cd / && composer create-project -q -n --no-progress --prefer-dist "laravel/laravel:^$LARAVEL.0" app >/dev/null 2>&1 \
+    || { echo "Could not create a Laravel $LARAVEL app"; exit 1; }
+cd /app
+composer config repositories.php-whois "{\"type\": \"path\", \"url\": \"/pkg\", \"options\": {\"symlink\": false, \"versions\": {\"setechsolutions/php-whois\": \"5.0.0\"}}}"
+composer require -q -n --no-progress -W "setechsolutions/php-whois:5.0.0" > /tmp/require.log 2>&1 \
+    || { echo "composer require failed:"; grep -A12 -i problem /tmp/require.log | head -30; exit 1; }
+
+echo "  $(php artisan --version 2>/dev/null | tail -1), PHP $(php -r "echo PHP_VERSION;")"
+php artisan vendor:publish --tag=whois-config >/dev/null 2>&1
+test -f config/whois.php && echo "  config published" || { echo "  config was NOT published"; exit 1; }
+
+cat /src/tests/LaravelApp/routes.stub >> routes/web.php
+mkdir -p tests/Feature && cp /src/tests/LaravelApp/WhoisAppTest.stub tests/Feature/WhoisAppTest.php
+php vendor/bin/phpunit --filter WhoisAppTest > /tmp/phpunit.log 2>&1 && status=0 || status=$?
+sed "s/\x1b\[[0-9;]*m//g" /tmp/phpunit.log | grep -E "^OK|Tests:|FAILURES|ERRORS" | sed "s/^/  /" || true
+if [ "$status" -ne 0 ]; then sed "s/\x1b\[[0-9;]*m//g" /tmp/phpunit.log | grep -v "^#[0-9]" | tail -40; exit 1; fi
+'

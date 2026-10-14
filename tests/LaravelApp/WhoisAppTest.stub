@@ -1,0 +1,58 @@
+<?php
+
+namespace Tests\Feature;
+
+use SETechSolutions\Whois\Whois;
+use Tests\TestCase;
+
+/**
+ * Copied into a freshly created Laravel app as tests/Feature/WhoisAppTest.php by bin/test-laravel-app. Nothing in that app registers
+ * the package, so these tests pass only if Laravel discovered it. They query real servers.
+ */
+class WhoisAppTest extends TestCase
+{
+    public function testPackageIsDiscovered()
+    {
+        $this->assertInstanceOf(Whois::class, app(Whois::class));
+        $this->assertSame(app(Whois::class), app('whois'));
+        $this->assertSame(app('whois'), \Whois::getFacadeRoot());
+        $this->assertSame('rdap_first', config('whois.mode'));
+    }
+
+    public function testFacadeRouteReturnsDomainInfoAsJson()
+    {
+        $response = $this->get('/whois/google.com');
+        $response->assertStatus(200);
+        $data = json_decode($response->getContent(), true);
+
+        $this->assertSame('google.com', $data['domain']);
+        $this->assertSame('rdap', $data['source']);
+        $this->assertContains('ns1.google.com', $data['nameServers']);
+        $this->assertGreaterThan(time(), strtotime($data['expiresAt']));
+    }
+
+    public function testInjectedClientReportsAvailability()
+    {
+        $free = 'php-whois-' . bin2hex(random_bytes(6)) . '.com';
+
+        $this->assertTrue(json_decode($this->get('/whois-available/' . $free)->getContent(), true)['available']);
+        $this->assertFalse(json_decode($this->get('/whois-available/wikipedia.org')->getContent(), true)['available']);
+    }
+
+    public function testRawWhoisText()
+    {
+        $response = $this->get('/whois-raw/denic.de');
+        $response->assertStatus(200);
+
+        $this->assertSame('whois', $response->headers->get('X-Whois-Source'));
+        $this->assertNotFalse(stripos($response->getContent(), 'denic.de'));
+    }
+
+    public function testConfigChangesTheClient()
+    {
+        config(['whois.mode' => 'whois_only']);
+        app()->forgetInstance(Whois::class);
+
+        $this->assertSame('whois', app(Whois::class)->lookup('denic.de')->source());
+    }
+}

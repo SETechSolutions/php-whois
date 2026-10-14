@@ -1,0 +1,12 @@
+
+// Added by bin/test-laravel-app
+\Illuminate\Support\Facades\Route::get('/whois/{domain}', function ($domain) {
+    return response()->json(\Whois::lookup($domain));
+});
+\Illuminate\Support\Facades\Route::get('/whois-available/{domain}', function (\SETechSolutions\Whois\Whois $whois, $domain) {
+    return response()->json(['available' => $whois->isAvailable($domain)]);
+});
+\Illuminate\Support\Facades\Route::get('/whois-raw/{domain}', function ($domain) {
+    $raw = app('whois')->raw($domain);
+    return response($raw->text(), 200, ['Content-Type' => 'text/plain', 'X-Whois-Source' => $raw->source()]);
+});
