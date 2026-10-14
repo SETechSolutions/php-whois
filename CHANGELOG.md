@@ -1,6 +1,62 @@
 # Changelog
 
-Versions continue the numbering of io-developer/php-whois, which this package replaces.
+## 5.0.0 (unreleased)
+
+A rebuild with a new API and built-in Laravel support. It is not compatible with 4.x: the
+`Iodev\Whois` classes are gone and the package no longer declares that it replaces
+io-developer/php-whois. Projects that need the drop-in replacement stay on `^4.2`, which lives on
+the `4.x` branch.
+
+### Added
+- New API in the `SETechSolutions\Whois` namespace: `Whois::lookup()`, `isAvailable()` and `raw()`.
+- `DomainInfo`, an immutable result with dates as `DateTimeImmutable`, the same for RDAP and WHOIS
+  answers, JSON-serializable.
+- Laravel support for versions 6 to 13: a service provider and a `Whois` facade that Laravel
+  discovers by itself, and a publishable `config/whois.php` (`WHOIS_MODE`, `WHOIS_TIMEOUT` in `.env`).
+  The package has no dependency on Laravel, so it works the same in plain PHP.
+- Exceptions under one base class, `WhoisException`: `InvalidDomainException`,
+  `UnsupportedTldException`, `ConnectionException`, `RateLimitException`.
+- Options as an array: `mode`, `timeout`, `follow_registrar`, `curl_options`, `rdap_servers`,
+  `whois_servers`.
+- Input is checked: a string that is not a domain name throws `InvalidDomainException` before any
+  request is made.
+- `bin/docker-test` and `bin/test-laravel-app` to run the tests for any PHP and Laravel version in
+  Docker. CI tests every Laravel version on the lowest and highest PHP it supports.
+
+### Changed
+- Requires PHP 7.2.5 (was 7.2).
+- Modes are named `rdap_first`, `whois_first`, `rdap_only`, `whois_only`.
+- The default timeout is 30 seconds (was 60).
+- WHOIS servers given in the options are tried before the bundled ones for the same zone.
+- Dates a registry does not publish are `null`. In 4.x they were `0` or an empty string depending on
+  the parser.
+- A rate limit is its own exception, `RateLimitException`, for both protocols.
+
+### Removed
+- The `Iodev\Whois` namespace with `Factory`, the loaders, `TldInfo` and `TldResponse` as public
+  classes, and the deprecated methods carried over from io-developer/php-whois.
+- ASN lookups.
+- `MemcachedLoader`. Cache `DomainInfo::toArray()` or the lookup result with your own cache.
+- The `replace` entry for io-developer/php-whois in `composer.json`.
+
+### Moving from 4.x
+| 4.x | 5.0 |
+|---|---|
+| `Factory::get()->createWhois()` | `new Whois()` |
+| `$whois->loadDomainInfo($d)` | `$whois->lookup($d)` |
+| `$whois->isDomainAvailable($d)` | `$whois->isAvailable($d)` |
+| `$whois->lookupDomain($d)->text` | `$whois->raw($d)->text()` |
+| `$info->domainName`, `->registrar`, `->owner` | `$info->domain()`, `->registrar()`, `->owner()` |
+| `$info->creationDate` (unix time) | `$info->createdAt()` (`DateTimeImmutable` or `null`) |
+| `$info->expirationDate`, `->updatedDate` | `$info->expiresAt()`, `->updatedAt()` |
+| `$info->states`, `->nameServers` | `$info->statuses()`, `->nameServers()` |
+| `$whois->setLookupMode(LookupMode::WHOIS_ONLY)` | `new Whois(['mode' => Mode::WHOIS_ONLY])` |
+| `new CurlLoader()` with `replaceOptions([...])` | `new Whois(['curl_options' => [...]])` |
+| `ServerMismatchException` | `UnsupportedTldException` |
+
+## 4.x
+
+Versions 4.x continue the numbering of io-developer/php-whois, which they replace.
 
 ## 4.2.0 (2026-10-14)
 

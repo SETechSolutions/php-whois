@@ -4,22 +4,67 @@ on: [push, pull_request]
 
 jobs:
 
-  phpunit:
+  php:
+    name: PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        php-version: ['7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5']
+        php: ['7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5']
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ matrix.php-version }}
+          php-version: ${{ matrix.php }}
           extensions: curl, mbstring, json, intl
           coverage: none
 
-      - run: php -v
-      - run: composer install --no-interaction --no-progress
-      - run: vendor/bin/phpunit
+      - run: composer update --no-interaction --no-progress
+      - run: vendor/bin/phpunit --testsuite unit
+
+  laravel:
+    name: Laravel ${{ matrix.laravel }} on PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The lowest and the highest PHP version each Laravel release runs on
+        include:
+          - { laravel: 6, php: '7.2' }
+          - { laravel: 6, php: '8.0' }
+          - { laravel: 7, php: '7.2' }
+          - { laravel: 7, php: '8.0' }
+          - { laravel: 8, php: '7.3' }
+          - { laravel: 8, php: '8.1' }
+          - { laravel: 9, php: '8.0' }
+          - { laravel: 9, php: '8.2' }
+          - { laravel: 10, php: '8.1' }
+          - { laravel: 10, php: '8.3' }
+          - { laravel: 11, php: '8.2' }
+          - { laravel: 11, php: '8.4' }
+          - { laravel: 12, php: '8.2' }
+          - { laravel: 12, php: '8.5' }
+          - { laravel: 13, php: '8.3' }
+          - { laravel: 13, php: '8.5' }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, mbstring, json, intl, dom, fileinfo
+          coverage: none
+
+      # testbench N runs Laravel N+2
+      - run: composer require --dev --no-update "orchestra/testbench:^$(( ${{ matrix.laravel }} - 2 )).0"
+
+      # Composer refuses Laravel versions with open security advisories, which is every release up to 11
+      - if: matrix.laravel <= 11
+        run: composer config policy.advisories.block false
+
+      - run: composer update --no-interaction --no-progress
+      - run: vendor/bin/phpunit --testsuite unit
+      - run: vendor/bin/phpunit --testsuite laravel

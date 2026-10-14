@@ -1,6 +1,6 @@
 | Q             | A
 | ------------- | ---
-| Branch?       | master
+| Branch?       | main
 | Bug fix?      | yes/no
 | New feature?  | yes/no <!-- please add use-case examples to README.md -->
 | BC breaks?    | no

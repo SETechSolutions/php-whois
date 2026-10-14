@@ -1,361 +1,220 @@
 # PHP WHOIS
 
-[![PHP version](https://img.shields.io/badge/php-%3E%3D7.2-8892BF.svg)](https://secure.php.net/)
+[![PHP version](https://img.shields.io/badge/php-%3E%3D7.2.5-8892BF.svg)](https://www.php.net/)
+[![Laravel](https://img.shields.io/badge/laravel-6%20to%2013-FF2D20.svg)](https://laravel.com/)
 [![Packagist](https://img.shields.io/packagist/v/setechsolutions/php-whois.svg)](https://packagist.org/packages/setechsolutions/php-whois)
 [![tests](https://github.com/SETechSolutions/php-whois/actions/workflows/tests.yml/badge.svg)](https://github.com/SETechSolutions/php-whois/actions/workflows/tests.yml)
 
-A drop-in replacement for [io-developer/php-whois](https://github.com/io-developer/php-whois) that
-looks domains up over **RDAP first and falls back to WHOIS**. Same `Iodev\Whois` classes, same methods,
-same result objects.
+Looks up domain registration data: registrar, creation and expiry dates, name servers, status,
+and whether a domain is free. It asks **RDAP first and falls back to WHOIS**, and returns the same
+result object either way. Works in plain PHP and in Laravel 6 to 13.
 
-Why: since 28 January 2025 ICANN no longer requires gTLD registries and registrars to run WHOIS, and
-RDAP is the authoritative source. The original library has had no release since January 2023 and speaks
-WHOIS only. Most country-code domains (.de, .il, .ru, ...) still have WHOIS and no RDAP, so this
-library speaks both.
+Why both protocols: since 28 January 2025 ICANN no longer requires gTLD registries and registrars
+to run WHOIS, and RDAP is the authoritative source for them. Most country-code domains
+(.de, .il, .ru, ...) still have WHOIS and no RDAP.
 
-## Use case
- * Raw and parsed domain lookup over RDAP and WHOIS
- * Raw and parsed ASN routes lookup
- * Direct queries to TLD/ASN hosts
- * Extending and customizing the default hosts, parsers, etc.
- * Proxying via CurlLoader
-
-## Migrating from io-developer/php-whois
-
-Change one line in `composer.json` and run `composer update`:
-````diff
--    "io-developer/php-whois": "^4.0"
-+    "setechsolutions/php-whois": "^4.2"
-````
-No code changes are needed. The package declares that it replaces `io-developer/php-whois`, so
-packages that depend on the original (for example `larva/laravel-whois`) keep working.
-
-What behaves differently after the switch:
-
-* `loadDomainInfo()` and `isDomainAvailable()` ask RDAP first for zones that have an RDAP server.
-  The result is the same `TldInfo` with the same fields in the same formats. `$info->parserType` is
-  `rdap`, `$info->getResponse()->text` is JSON, and `$info->getExtra()` holds the decoded JSON under
-  `rdap` instead of the WHOIS parser's `groups`.
-* `$info->owner` is more often empty: RDAP redacts registrant data more strictly than WHOIS did.
-* RDAP needs outgoing HTTPS (port 443). If only port 43 is open, set the mode to `whoisOnly` (see below);
-  otherwise every lookup first waits for the HTTPS connection to fail.
-* `lookupDomain()` still returns WHOIS text whenever a WHOIS server answers.
-* A loader of your own (any `ILoader`, or a subclass of `SocketLoader` / `CurlLoader` that overrides
-  `loadText()`) is used for WHOIS only, exactly as before. See "RDAP with a custom loader".
-
-To get the old behaviour back completely: `$whois->setLookupMode(LookupMode::WHOIS_ONLY);`
-
-Fixed along the way, all present in io-developer/php-whois 4.1.10:
-
-* PHP 8.4+ printed a deprecation for every "implicitly nullable parameter" (17 places).
-* PHP 8.2+ printed "Creation of dynamic property" for custom parser classes.
-* PHP 8.5 printed a deprecation for `curl_close()` in `CurlLoader`.
-* PHP 8.x turned non-UTF-8 replies into question marks (for example `ä` in .fi replies).
-* PHP 7.x threw a `TypeError` on `json_encode($info)`.
+> Looking for the drop-in replacement of io-developer/php-whois with the old `Iodev\Whois` classes?
+> That is version 4: `composer require setechsolutions/php-whois:^4.2`.
+> See the [4.x branch](https://github.com/SETechSolutions/php-whois/tree/4.x).
 
 ## Installation
 
-##### System requirements:
-* PHP >= __7.2__, tested up to __8.5__
-* php-curl
-* php-mbstring
-* Outgoing port __443__ (RDAP) and port __43__ (WHOIS) open in firewall
-
-Optional:
-* php-intl
-* php-memcached + Memcached server
-
-##### Project requirements:
-* PSR-4 autoloader
-
-##### Composer:
-````
+```
 composer require setechsolutions/php-whois
-````
-or composer.json:
-````
-"require": {
-    "setechsolutions/php-whois": "^4.2"
-}
-````
+```
 
+Requirements: PHP 7.2.5 or newer with the `curl`, `mbstring` and `json` extensions, and outgoing
+access to port 443 (RDAP) and port 43 (WHOIS).
 
 ## Usage
 
-### Domain lookup
-
-##### How to get summary about domain:
 ```php
-<?php
+use SETechSolutions\Whois\Whois;
 
-use Iodev\Whois\Factory;
+$whois = new Whois();
 
-// Creating default configured client
-$whois = Factory::get()->createWhois();
+$info = $whois->lookup('example.com');     // DomainInfo, or null when the domain is not registered
 
-// Checking availability
-if ($whois->isDomainAvailable("google.com")) {
-    print "Bingo! Domain is available! :)";
+if ($info) {
+    echo $info->registrar();                    // "RESERVED-Internet Assigned Numbers Authority"
+    echo $info->expiresAt()->format('Y-m-d');   // DateTimeImmutable, or null if not published
+    print_r($info->nameServers());              // ["elliott.ns.cloudflare.com", ...]
+    echo $info->source();                       // "rdap" or "whois"
 }
 
-// Supports Unicode (converts to punycode)
-if ($whois->isDomainAvailable("почта.рф")) {
-    print "Bingo! Domain is available! :)";
+$whois->isAvailable('some-free-name.com');  // true
+
+echo $whois->raw('example.com')->text();    // the server's own answer, unparsed
+```
+
+International names work as they are: `$whois->lookup('münchen.de')`.
+
+### Laravel
+
+Nothing to register: Laravel finds the service provider and the `Whois` facade by itself.
+
+```php
+use Whois;
+
+$info = Whois::lookup('example.com');
+
+Route::get('/domains/{domain}', function ($domain) {
+    return response()->json(Whois::lookup($domain));
+});
+```
+
+The client can also be injected:
+
+```php
+use SETechSolutions\Whois\Whois;
+
+public function show(Whois $whois, $domain)
+{
+    return view('domain', ['available' => $whois->isAvailable($domain)]);
 }
+```
 
-// Getting raw-text lookup
-$response = $whois->lookupDomain("google.com");
-print $response->text;
+To change the settings, publish the config file:
 
-// Getting parsed domain info
-$info = $whois->loadDomainInfo("google.com");
-print_r([
-    'Domain created' => date("Y-m-d", $info->creationDate),
-    'Domain expires' => date("Y-m-d", $info->expirationDate),
-    'Domain owner' => $info->owner,
-    'Answered by' => $info->getResponse()->getSource(), // "rdap" or "whois"
+```
+php artisan vendor:publish --tag=whois-config
+```
+
+`config/whois.php` holds the options described below. The two most common ones can also be set
+in `.env`: `WHOIS_MODE=whois_first` and `WHOIS_TIMEOUT=10`.
+
+## The result
+
+`lookup()` returns a `SETechSolutions\Whois\DomainInfo`:
+
+| Method | Returns |
+|---|---|
+| `domain()` | The name in ASCII, lowercase (`xn--mnchen-3ya.de`) |
+| `unicodeDomain()` | The name with international characters (`münchen.de`) |
+| `registrar()` | Registrar name |
+| `owner()` | Registrant organization or name. Often empty: registries hide it for privacy |
+| `createdAt()`, `updatedAt()`, `expiresAt()` | `DateTimeImmutable` in UTC, or `null` |
+| `nameServers()` | List of host names, lowercase |
+| `statuses()` | List of status codes, lowercase: `ok`, `clienttransferprohibited`, ... |
+| `dnssec()` | As the registry states it: `unsigned`, `signedDelegation`, ... |
+| `whoisServer()` | The registrar's or registry's WHOIS server, when named |
+| `source()` | `rdap` or `whois` |
+| `raw()` | The `RawResponse` the data was read from: `text()`, `source()`, `server()`, `query()` |
+| `toArray()` | All of the above except `raw()`, with dates as ISO 8601 strings |
+
+A field the registry does not publish is empty: `''`, `[]` or `null`. `DomainInfo` is
+JSON-serializable, so it can be returned from a Laravel route or passed to `json_encode()`.
+
+## Options
+
+Pass them to the constructor, or set them in `config/whois.php` in Laravel:
+
+```php
+$whois = new Whois([
+    'mode' => 'whois_first',
+    'timeout' => 10,
 ]);
-
 ```
 
-##### RDAP or WHOIS: lookup modes
-```php
-<?php
-
-use Iodev\Whois\Factory;
-use Iodev\Whois\Modules\Tld\LookupMode;
-
-$whois = Factory::get()->createWhois();
-$whois->setLookupMode(LookupMode::WHOIS_FIRST);
-```
-
-| Mode | `loadDomainInfo()`, `isDomainAvailable()` | `lookupDomain()` |
+| Option | Default | Meaning |
 |---|---|---|
-| `LookupMode::RDAP_FIRST` (default) | RDAP, then WHOIS if RDAP fails | WHOIS text, then RDAP JSON if WHOIS fails |
-| `LookupMode::WHOIS_FIRST` | WHOIS, then RDAP if WHOIS fails | same |
-| `LookupMode::RDAP_ONLY` | RDAP | RDAP JSON |
-| `LookupMode::WHOIS_ONLY` | WHOIS, as in io-developer/php-whois | WHOIS text |
+| `mode` | `rdap_first` | Which protocols are used, see below |
+| `timeout` | `30` | Seconds to wait for each request |
+| `follow_registrar` | `true` | Registries such as .com link to the registrar's RDAP server, which usually knows the owner. `true` makes a second request to fetch that |
+| `curl_options` | `[]` | Extra curl options for every request, for example a proxy |
+| `rdap_servers` | `[]` | RDAP servers to add: `['example' => 'https://rdap.nic.example/']` |
+| `whois_servers` | `[]` | WHOIS servers to try before the bundled ones: `[['zone' => '.example', 'host' => 'whois.nic.example']]` |
 
-"Fails" means a connection error, a server error or a rate limit (HTTP 429). "Domain not found" is an
-answer, not a failure, so it does not trigger the second protocol. A zone that has a server for only
-one protocol uses that protocol in the two "first" modes. `ServerMismatchException` is thrown when no
-allowed protocol has a server for the zone.
+### Modes
 
-The RDAP servers come from a snapshot of [IANA's bootstrap file](https://data.iana.org/rdap/dns.json)
-shipped with the package. For registries that link to the registrar's RDAP server (.com, .net and
-others) a second request fetches the registrar's record, which usually adds the owner and the
-registrar's WHOIS server. Turn that off with `$whois->getTldModule()->setRdapFollowRelated(false)`.
+| Mode | `lookup()`, `isAvailable()` | `raw()` |
+|---|---|---|
+| `rdap_first` (default) | RDAP, then WHOIS if RDAP fails | WHOIS text, then RDAP JSON if WHOIS fails |
+| `whois_first` | WHOIS, then RDAP if WHOIS fails | same |
+| `rdap_only` | RDAP | RDAP JSON |
+| `whois_only` | WHOIS | WHOIS text |
 
-##### RDAP servers customization:
+The constants are in `SETechSolutions\Whois\Mode`. "Fails" means a connection error, a server
+error or a rate limit. "Domain not found" is an answer, not a failure, so it does not trigger the
+second protocol. A zone that has a server for only one protocol uses that protocol in the two
+"first" modes.
+
+If outgoing HTTPS is blocked and only port 43 is open, use `whois_only`. Otherwise every lookup
+first waits for the HTTPS connection to fail.
+
+### Proxy
+
 ```php
-<?php
-
-use Iodev\Whois\Factory;
-use Iodev\Whois\Loaders\SocketLoader;
-use Iodev\Whois\Modules\Tld\Rdap\RdapBootstrap;
-
-$whois = Factory::get()->createWhois();
-$tld = $whois->getTldModule();
-
-// Add or replace the RDAP server of a zone
-$tld->getRdapBootstrap()->addServers([
-    'custom' => 'https://rdap.nic.custom/',
+$whois = new Whois([
+    'curl_options' => [
+        CURLOPT_PROXYTYPE => CURLPROXY_SOCKS5,
+        CURLOPT_PROXY => '127.0.0.1:1080',
+    ],
 ]);
-
-// Or use IANA's current list instead of the bundled snapshot.
-// Cache it: IANA asks clients to fetch the file at most once a day.
-$tld->setRdapBootstrap(RdapBootstrap::loadFromIana(new SocketLoader()));
 ```
 
-##### RDAP with a custom loader:
-RDAP requests go through the loader when it implements `Iodev\Whois\Loaders\IHttpLoader`
-(`SocketLoader`, `CurlLoader` and `MemcachedLoader` do). A loader that does not, or a subclass that
-overrides `loadText()` without `loadHttp()`, stays WHOIS-only, so existing custom loaders and test
-fakes never start making HTTP requests. To give such a loader RDAP, implement `loadHttp($url)` in it or
-set a separate one:
+When `curl_options` is set, WHOIS queries go through curl as well, so the proxy covers both protocols.
+
+## Errors
+
+Every exception extends `SETechSolutions\Whois\Exceptions\WhoisException`:
+
+| Exception | When |
+|---|---|
+| `InvalidDomainException` | The input is not a domain name |
+| `UnsupportedTldException` | No server is known for the zone (in the mode in use) |
+| `ConnectionException` | The server could not be reached, timed out or had a server error |
+| `RateLimitException` | The server refused the query because too many were sent |
+
 ```php
-<?php
-
-use Iodev\Whois\Loaders\SocketLoader;
-
-$whois->getTldModule()->setHttpLoader(new SocketLoader());
-```
-
-##### Exceptions on domain lookup:
-```php
-<?php
-
-use Iodev\Whois\Factory;
-use Iodev\Whois\Exceptions\ConnectionException;
-use Iodev\Whois\Exceptions\ServerMismatchException;
-use Iodev\Whois\Exceptions\WhoisException;
+use SETechSolutions\Whois\Exceptions\RateLimitException;
+use SETechSolutions\Whois\Exceptions\WhoisException;
 
 try {
-    $whois = Factory::get()->createWhois();
-    $info = $whois->loadDomainInfo("google.com");
-    if (!$info) {
-        print "Null if domain available";
-        exit;
-    }
-    print $info->domainName . " expires at: " . date("d.m.Y H:i:s", $info->expirationDate);
-} catch (ConnectionException $e) {
-    print "Disconnect or connection timeout";
-} catch (ServerMismatchException $e) {
-    print "TLD server (.com for google.com) not found in current server hosts";
+    $info = $whois->lookup($domain);
+} catch (RateLimitException $e) {
+    // try again later
 } catch (WhoisException $e) {
-    print "Whois server responded with error '{$e->getMessage()}'";
+    // anything else
 }
 ```
 
-##### Proxy with SOCKS5:
-```php
-<?php
+Registries limit how many queries they accept. If you look the same domains up repeatedly,
+cache the results.
 
-use Iodev\Whois\Loaders\CurlLoader;
-use Iodev\Whois\Factory;
+## Supported versions
 
-$loader = new CurlLoader();
-$loader->replaceOptions([
-    CURLOPT_PROXYTYPE => CURLPROXY_SOCKS5,
-    CURLOPT_PROXY => "127.0.0.1:1080",
-    //CURLOPT_PROXYUSERPWD => "user:pass",
-]);
-$whois = Factory::get()->createWhois($loader);
+| | Versions |
+|---|---|
+| PHP | 7.2.5 to 8.5 |
+| Laravel | 6, 7, 8, 9, 10, 11, 12, 13 (optional: the package has no Laravel dependency) |
 
-var_dump([
-    'ya.ru' => $whois->loadDomainInfo('ya.ru'),
-    'google.de' => $whois->loadDomainInfo('google.de'),
-]);
-```
-The same curl options, including the proxy, are used for RDAP requests.
+Each Laravel version is tested on the lowest and the highest PHP version it runs on.
 
-##### TLD hosts customization:
-```php
-<?php
-
-use Iodev\Whois\Factory;
-use Iodev\Whois\Modules\Tld\TldServer;
-
-$whois = Factory::get()->createWhois();
-
-// Define custom whois host
-$customServer = new TldServer(".custom", "whois.nic.custom", false, Factory::get()->createTldParser());
-
-// Or define the same via assoc way
-$customServer = TldServer::fromData([
-    "zone" => ".custom",
-    "host" => "whois.nic.custom",
-]);
-
-// Add custom server to existing whois instance
-$whois->getTldModule()->addServers([$customServer]);
-
-// Now it can be utilized
-$info = $whois->loadDomainInfo("google.custom");
-
-var_dump($info);
-```
-
-##### TLD default/fallback servers:
-```php
-<?php
-
-use Iodev\Whois\Factory;
-use Iodev\Whois\Modules\Tld\TldServer;
-
-$whois = Factory::get()->createWhois();
-
-// Add default servers
-$matchedServers = $whois->getTldModule()
-    ->addServers(TldServer::fromDataList([
-        ['zone' => '.*.net', 'host' => 'localhost'],
-        ['zone' => '.uk.*', 'host' => 'localhost'],
-        ['zone' => '.*', 'host' => 'localhost'],
-    ]))
-    ->matchServers('some.uk.net');
-
-foreach ($matchedServers as $s) {
-    echo "{$s->getZone()}  {$s->getHost()}\n";
-}
-
-// Matched servers + custom defaults:
-//
-// .uk.net  whois.centralnic.com
-// .uk.net  whois.centralnic.net
-// .uk.*  localhost
-// .*.net  localhost
-// .net  whois.crsnic.net
-// .net  whois.verisign-grs.com
-// .*  localhost
-```
-
-### ASN lookup
-
-##### How to get summary using ASN number:
-```php
-<?php
-
-use Iodev\Whois\Factory;
-
-$whois = Factory::get()->createWhois();
-
-// Getting raw-text lookup
-$response = $whois->lookupAsn("AS32934");
-print $response->text;
-
-// Getting parsed ASN info
-$info = $whois->loadAsnInfo("AS32934");
-foreach ($info->routes as $route) {
-    print_r([
-        'route IPv4' => $route->route,
-        'route IPv6' => $route->route6,
-        'description' => $route->descr,
-    ]);   
-}
-
-```
-
-### Response caching
-Some TLD hosts are very limited for frequent requests. Use cache if in your case requests are repeating.
-RDAP responses are cached too.
-```php
-<?php
-
-use Iodev\Whois\Factory;
-use Iodev\Whois\Loaders\SocketLoader;
-use Iodev\Whois\Loaders\MemcachedLoader;
-
-$m = new Memcached();
-$m->addServer('127.0.0.1', 11211);
-$loader = new MemcachedLoader(new SocketLoader(), $m);
-
-$whois = Factory::get()->createWhois($loader);
-// do something...
-```
-
+Note for Laravel 11 and older: these Laravel releases have open security advisories, and
+Composer 2.10 refuses to install packages with advisories unless told otherwise. That affects any
+`composer update` in such a project, with or without this package.
 
 ## Development
-Supported php versions are configured in `docker-compose.yml`
 
-Common use cases:
-1. Set up & run all tests: `docker compose up --build`
-2. Run tests under specific php version: `docker compose up php-8.5_intl --build`
-3. Run scripts: `docker compose run php-8.5_intl bin/php-whois info google.com --mode rdapFirst`
-4. Run the tests that query real servers: `composer test-live`
+No local PHP setup is needed, the scripts run in Docker:
 
-`tests/Iodev/Whois/Compat/ApiCompatibilityTest.php` fails if anything from the public or protected API
-of io-developer/php-whois 4.1.10 is removed or changed. New classes and methods are fine.
+| Command | What it runs |
+|---|---|
+| `bin/docker-test 8.3` | Unit tests on PHP 8.3 |
+| `bin/docker-test 8.3 12` | Unit tests, then the Laravel tests against Laravel 12 |
+| `bin/docker-test 8.3 - live` | The tests that query real servers |
+| `bin/test-laravel-app 8.4 12` | Creates a fresh Laravel 12 app, installs this checkout and runs real lookups in it |
+| `bin/test-laravel-app all` | The same for Laravel 6 to 13 |
 
-The bundled server lists are maintained with `bin/update-servers` (`rdap`, `check`, `missing`).
+With PHP installed locally: `composer test`, and `composer test-live` for the live tests. The
+Laravel tests need `orchestra/testbench` for the Laravel version to test, which is not in
+`composer.json` because each Laravel version needs a different one.
 
-Also see **TESTS.md**
-
-
-## Contributing
-
-The project is open for pull requests, issues and feedback. Please read the CODE_OF_CONDUCT.md
+The server lists in `resources/` are maintained with `bin/update-servers` (`rdap`, `check`, `missing`).
 
 ## Credits
 
-Based on [io-developer/php-whois](https://github.com/io-developer/php-whois) by Sergey Sedyshev and
-its contributors (MIT).
+The WHOIS text parsers and their test data come from
+[io-developer/php-whois](https://github.com/io-developer/php-whois) by Sergey Sedyshev and its
+contributors (MIT).

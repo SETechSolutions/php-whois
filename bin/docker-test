@@ -1,0 +1,39 @@
+#!/bin/sh
+# Runs the tests inside the official PHP Docker image, so no local PHP setup is needed.
+#
+#   bin/docker-test 8.3              unit tests on PHP 8.3
+#   bin/docker-test 8.3 12           unit tests, then the Laravel tests against Laravel 12
+#   bin/docker-test 8.3 - live       the tests that query real servers
+#
+# Laravel 6 to 13 are supported; each needs a PHP version that Laravel release runs on.
+
+set -e
+PHP_VERSION=${1:?usage: bin/docker-test <php version> [laravel version|-] [live]}
+LARAVEL=${2:--}
+SUITE=${3:-}
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+
+docker run --rm -v "$ROOT":/src:ro -v php-whois-composer-cache:/root/.composer/cache \
+    -e LARAVEL="$LARAVEL" -e SUITE="$SUITE" "php:$PHP_VERSION-cli-alpine" sh -c '
+set -e
+apk add --no-cache git unzip >/dev/null 2>&1
+curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer >/dev/null 2>&1
+export COMPOSER_ALLOW_SUPERUSER=1
+mkdir /w && cd /src && tar --exclude=./vendor --exclude=./composer.lock --exclude=./.git -cf - . | tar -xf - -C /w && cd /w
+if [ "$LARAVEL" != "-" ]; then
+    # testbench N runs Laravel N+2
+    composer require -q --dev --no-update "orchestra/testbench:^$((LARAVEL - 2)).0"
+    # Composer refuses Laravel versions with open security advisories, which is every release up to 11
+    if [ "$LARAVEL" -le 11 ]; then composer config policy.advisories.block false; fi
+fi
+composer update -q --no-interaction --no-progress
+if [ "$SUITE" = "live" ]; then
+    php vendor/bin/phpunit --testsuite live
+    exit 0
+fi
+php vendor/bin/phpunit --testsuite unit
+if [ "$LARAVEL" != "-" ]; then
+    echo "Laravel $(php -r "require \"vendor/autoload.php\"; echo Illuminate\\Foundation\\Application::VERSION;")"
+    php vendor/bin/phpunit --testsuite laravel
+fi
+'

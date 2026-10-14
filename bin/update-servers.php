@@ -3,9 +3,9 @@
 /*
  * Maintenance script for the bundled server lists. Review its output (and the git diff) before committing.
  *
- *   php bin/update-servers.php rdap             Download IANA's RDAP bootstrap file into Configs/module.tld.rdap.json
+ *   php bin/update-servers.php rdap             Download IANA's RDAP bootstrap file into resources/rdap-bootstrap.json
  *   php bin/update-servers.php check [--save file] [--load file] [--write]
- *       Query every WHOIS host in Configs/module.tld.servers.json and report the ones that fail.
+ *       Query every WHOIS host in resources/whois-servers.json and report the ones that fail.
  *       Confirmed failures are: the hostname does not resolve, or the server says WHOIS was retired.
  *       Other failures are often rate limiting, because many hosts share one backend.
  *       --write fixes the confirmed ones: the host IANA lists now replaces the old one, or the entry is
@@ -17,14 +17,15 @@
 
 declare(strict_types=1);
 
-use Iodev\Whois\Loaders\SocketLoader;
-use Iodev\Whois\Modules\Tld\Rdap\RdapBootstrap;
+use SETechSolutions\Whois\Http\CurlHttpClient;
+use SETechSolutions\Whois\Rdap\Bootstrap;
+use SETechSolutions\Whois\WhoisProtocol\WhoisClient;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-const CONFIG_DIR = __DIR__ . '/../src/Iodev/Whois/Configs';
-const SERVERS_FILE = CONFIG_DIR . '/module.tld.servers.json';
-const RDAP_FILE = CONFIG_DIR . '/module.tld.rdap.json';
+const RESOURCES_DIR = __DIR__ . '/../resources';
+const SERVERS_FILE = RESOURCES_DIR . '/whois-servers.json';
+const RDAP_FILE = RESOURCES_DIR . '/rdap-bootstrap.json';
 const IANA_TLDS_URL = 'https://data.iana.org/TLD/tlds-alpha-by-domain.txt';
 
 /** Phrases registries put in WHOIS replies once they have switched WHOIS off */
@@ -57,7 +58,7 @@ function optionValue(array $argv, string $name): string
 
 function httpGet(string $url): string
 {
-    $result = (new SocketLoader(30))->loadHttp($url);
+    $result = (new CurlHttpClient(30))->get($url);
     if ($result['status'] !== 200) {
         throw new RuntimeException("HTTP {$result['status']} from $url");
     }
@@ -66,7 +67,7 @@ function httpGet(string $url): string
 
 function updateRdap(): int
 {
-    $data = json_decode(httpGet(RdapBootstrap::IANA_DNS_URL), true);
+    $data = json_decode(httpGet(Bootstrap::IANA_DNS_URL), true);
     if (!is_array($data) || empty($data['services'])) {
         fwrite(STDERR, "Unexpected bootstrap file\n");
         return 1;
@@ -195,7 +196,7 @@ function editServers(array $remove, array $replace, array $add): array
 /**
  * Sends "nic.<tld>" to each host, many at a time, and returns host => [status, start of the reply].
  * Status is one of: ok, retired, no-dns, no-connect, timeout, no-reply.
- * Uses curl's telnet protocol like CurlLoader does; curl resolves and connects in parallel.
+ * Uses curl's telnet protocol; curl resolves and connects in parallel.
  */
 function probeHosts(array $hostQueries, int $timeout = 15, int $parallel = 10): array
 {
@@ -264,7 +265,7 @@ function ianaWhoisHost(string $tld): string
     static $cache = [];
     if (!isset($cache[$tld])) {
         try {
-            $text = (new SocketLoader(15))->loadText('whois.iana.org', "$tld\r\n");
+            $text = (new WhoisClient(15))->query('whois.iana.org', "$tld\r\n");
             $cache[$tld] = preg_match('~^whois:[ \t]*(\S+)~mi', $text, $m) ? strtolower($m[1]) : '';
         } catch (Exception $e) {
             fprintf(STDERR, "  whois.iana.org %s: %s\n", $tld, $e->getMessage());
@@ -277,7 +278,7 @@ function ianaWhoisHost(string $tld): string
 function checkWhois(bool $write, string $saveFile, string $loadFile): int
 {
     $servers = loadServers();
-    $rdap = RdapBootstrap::fromIanaData(json_decode(file_get_contents(RDAP_FILE), true));
+    $rdap = Bootstrap::fromIanaData(json_decode(file_get_contents(RDAP_FILE), true));
     if ($loadFile !== '') {
         $results = json_decode(file_get_contents($loadFile), true);
     } else {
@@ -308,7 +309,7 @@ function checkWhois(bool $write, string $saveFile, string $loadFile): int
             continue;
         }
         $key = $s['zone'] . ' ' . $s['host'];
-        $hasRdap = (bool)$rdap->matchUrls('nic' . str_replace('*.', 'x.', $s['zone']));
+        $hasRdap = (bool)$rdap->match('nic' . str_replace('*.', 'x.', $s['zone']));
         $action = '';
         if (in_array($status, CONFIRMED_STATUSES, true)) {
             $tld = ltrim($s['zone'], '.');
@@ -359,13 +360,13 @@ function addMissing(bool $write): int
     }
     fprintf(STDERR, "%d root zone TLDs have no WHOIS entry, asking whois.iana.org...\n", count($tlds));
 
-    $loader = new SocketLoader(15);
+    $client = new WhoisClient(15);
     $added = [];
     $noWhois = [];
     $skipped = [];
     foreach ($tlds as $tld) {
         try {
-            $text = $loader->loadText('whois.iana.org', "$tld\r\n");
+            $text = $client->query('whois.iana.org', "$tld\r\n");
         } catch (Exception $e) {
             fprintf(STDERR, "  %s: %s\n", $tld, $e->getMessage());
             continue;
@@ -381,7 +382,7 @@ function addMissing(bool $write): int
             $dead = 'does not resolve';
         } else {
             try {
-                $dead = preg_match(RETIRED_PATTERN, $loader->loadText($host, "nic.$tld\r\n")) ? 'WHOIS retired' : '';
+                $dead = preg_match(RETIRED_PATTERN, $client->query($host, "nic.$tld\r\n")) ? 'WHOIS retired' : '';
             } catch (Exception $e) {
                 // Not confirmed dead: could be a rate limit or a slow server
             }
