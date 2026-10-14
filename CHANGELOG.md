@@ -1,6 +1,6 @@
 # Changelog
 
-## 5.0.0 (unreleased)
+## 5.0.0 (2026-10-14)
 
 A rebuild with a new API and built-in Laravel support. It is not compatible with 4.x: the
 `Iodev\Whois` classes are gone and the package no longer declares that it replaces
